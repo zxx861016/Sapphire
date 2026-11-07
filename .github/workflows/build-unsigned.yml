@@ -1,0 +1,45 @@
+name: Build unsigned Sapphire
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcodebuild -list -project Sapphire.xcodeproj
+      - name: Build (x86_64, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project Sapphire.xcodeproj \
+            -scheme Sapphire \
+            -configuration Release \
+            -derivedDataPath build \
+            ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            build 2>&1 | tee build.log
+      - name: Package
+        if: success()
+        run: |
+          set -e
+          APP=$(find build/Build/Products/Release -maxdepth 1 -name "Sapphire.app" | head -1)
+          echo "APP=$APP"
+          codesign --force --deep --sign - "$APP" || true
+          ditto -c -k --sequesterRsrc --keepParent "$APP" Sapphire-unsigned-x86_64.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sapphire-unsigned-x86_64
+          path: |
+            Sapphire-unsigned-x86_64.zip
+            build.log
